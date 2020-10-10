@@ -1,9 +1,11 @@
 import argparse
 import logging
+from base64 import urlsafe_b64encode
 from concurrent import futures
 from importlib import import_module
 from struct import pack, unpack
 from time import sleep
+from uuid import UUID
 
 import grpc
 from gate.service.grpc.api import service_pb2 as api
@@ -16,17 +18,17 @@ service_instance_types = {}
 
 
 def main():
-    parser = argparse.ArgumentParser("prototype")
+    parser = argparse.ArgumentParser(__package__)
     parser.add_argument("-l", metavar="ADDR", default=default_addr,
                         help="bind address (default: {})".format(default_addr))
     parser.add_argument("module", nargs="+", help="prototype to import")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        format="%(asctime)s %(name)s: %(message)s", level=logging.DEBUG)
+    logging.basicConfig(format="%(asctime)s %(name)s.%(funcName)s: %(message)s",
+                        level=logging.DEBUG)
 
     for name in args.module:
-        module = import_module(name, "prototype")
+        module = import_module(name, __package__)
         service_instance_types.update(module.service_instance_types)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
@@ -44,14 +46,14 @@ def main():
 
 
 revision = "0-python"
-log = logging.getLogger("api")
 
 
 class RootServicer(api_grpc.RootServicer):
+    log = logging.getLogger(__package__ + ".Root")
 
     def Init(self, req, ctx):
-        log.debug("Root.Init")
-        names = service_instance_types.keys()
+        names = sorted(service_instance_types.keys())
+        self.log.debug("%s", " ".join(names))
         services = [api.ServiceInfo(name=n, revision=revision) for n in names]
         return api.InitResponse(services=services)
 
@@ -73,26 +75,47 @@ def instance_id(id):
     return n
 
 
+def fmt_instance_config(config):
+    props = []
+
+    if config.process_key:
+        key = urlsafe_b64encode(config.process_key).decode().rstrip("=")
+        props.append("process={}".format(key))
+
+    if config.principal_id:
+        props.append("principal={}".format(config.principal_id))
+
+    if config.instance_uuid:
+        props.append("instance={}".format(UUID(bytes=config.instance_uuid)))
+
+    return " ".join(props)
+
+
 class ServiceServicer(api_grpc.ServiceServicer):
+    log = logging.getLogger(__package__ + ".Service")
 
     def CreateInstance(self, req, ctx):
-        log.debug("Service.%s.CreateInstance", req.name)
-        inst = service_instance_types[req.name](req.config)
-        inst.ready()
-        id = add_instance(inst)
-        log.debug("Service.%s.CreateInstance: %s", req.name, instance_id(id))
-        return api.CreateInstanceResponse(id=id)
+        self.log.debug("%s < %s", req.name, fmt_instance_config(req.config))
+        try:
+            inst = service_instance_types[req.name](req.config)
+            inst.ready()
+            id = add_instance(inst)
+            return api.CreateInstanceResponse(id=id)
+        finally:
+            self.log.debug("%s > #%d", req.name, instance_id(id))
 
     def RestoreInstance(self, req, ctx):
-        log.debug("Service.%s.RestoreInstance", req.name)
-        inst = service_instance_types[req.name](req.config)
-        error = inst.restore(req.snapshot)
-        if error is not None:
-            return api.RestoreInstanceResponse(error=error)
-        inst.ready()
-        id = add_instance(inst)
-        log.debug("Service.%s.RestoreInstance: %s", req.name, instance_id(id))
-        return api.RestoreInstanceResponse(id=id)
+        self.log.debug("%s < %s", req.name, fmt_instance_config(req.config))
+        try:
+            inst = service_instance_types[req.name](req.config)
+            error = inst.restore(req.snapshot)
+            if error is not None:
+                return api.RestoreInstanceResponse(error=error)
+            inst.ready()
+            id = add_instance(inst)
+            return api.RestoreInstanceResponse(id=id)
+        finally:
+            self.log.debug("%s > #%d", req.name, instance_id(id))
 
 
 def get_instance(id):
@@ -104,34 +127,75 @@ def pop_instance(id):
     return id_instances.pop(n)
 
 
+def fmt_packet(p):
+    domain = p[6]
+    msg = "len={} domain={}".format(len(p), domain)
+
+    index = p[7]
+    if index:
+        msg += " index={}".format(index)
+
+    if domain == 2:
+        if len(p) == 16:
+            stream, increment = unpack("<ii", p[8:])
+            msg += " stream={} increment={}".format(stream, increment)
+        else:
+            msg += " ..."
+
+    if domain == 3:
+        stream, note = unpack("<ii", p[8:16])
+        msg += " stream={}".format(stream)
+
+        if note:
+            msg += " note={}".format(note)
+
+    return msg
+
+
 class InstanceServicer(api_grpc.InstanceServicer):
+    log = logging.getLogger(__package__ + ".Instance")
 
     def Receive(self, req, ctx):
-        log.debug("Instance.%s.Receive", instance_id(req.id))
-        for packet in get_instance(req.id).generate_packets():
-            if isinstance(packet, bytearray):
-                packet = bytes(packet)
-            yield BytesValue(value=packet)
+        self.log.debug("#%d <", instance_id(req.id))
+        try:
+            for p in get_instance(req.id).generate_packets():
+                self.log.debug("#%d %s", instance_id(req.id), fmt_packet(p))
+                yield BytesValue(value=bytes(p) if isinstance(p, bytearray) else p)
+        finally:
+            self.log.debug("#%d >", instance_id(req.id))
 
     def Handle(self, req, ctx):
-        log.debug("Instance.%s.Handle", instance_id(req.id))
-        get_instance(req.id).handle_packet(req.data)
-        return Empty()
+        self.log.debug("#%d < %s", instance_id(req.id), fmt_packet(req.data))
+        try:
+            get_instance(req.id).handle_packet(req.data)
+            return Empty()
+        finally:
+            self.log.debug("#%d >", instance_id(req.id))
 
     def Shutdown(self, req, ctx):
-        log.debug("Instance.%s.Shutdown", instance_id(req.id))
-        pop_instance(req.id).shutdown()
-        return Empty()
+        self.log.debug("#%d <", instance_id(req.id))
+        try:
+            pop_instance(req.id).shutdown()
+            return Empty()
+        finally:
+            self.log.debug("#%d >", instance_id(req.id))
 
     def Suspend(self, req, ctx):
-        log.debug("Instance.%s.Suspend", instance_id(req.id))
-        get_instance(req.id).suspend()
-        return Empty()
+        self.log.debug("#%d <", instance_id(req.id))
+        try:
+            get_instance(req.id).suspend()
+            return Empty()
+        finally:
+            self.log.debug("#%d >", instance_id(req.id))
 
     def Snapshot(self, req, ctx):
-        log.debug("Instance.%s.Snapshot", instance_id(req.id))
-        snapshot = pop_instance(req.id).snapshot(req.outgoing, req.incoming)
-        return BytesValue(value=snapshot)
+        self.log.debug("#%d <", instance_id(req.id))
+        try:
+            inst = pop_instance(req.id)
+            snapshot = inst.snapshot(req.outgoing, req.incoming)
+            return BytesValue(value=snapshot)
+        finally:
+            self.log.debug("#%d >", instance_id(req.id))
 
 
 if __name__ == "__main__":
