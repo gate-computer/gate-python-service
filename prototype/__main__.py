@@ -13,8 +13,6 @@ from google.protobuf.wrappers_pb2 import BytesValue
 
 from . import peer, peerindex
 
-logging.basicConfig(level=logging.DEBUG)
-
 default_addr = "localhost:12345"
 service_instance_types = {}
 
@@ -25,6 +23,9 @@ def main():
                         help="bind address (default: {})".format(default_addr))
     parser.add_argument("module", nargs="+", help="prototype to import")
     args = parser.parse_args()
+
+    logging.basicConfig(
+        format="%(asctime)s %(name)s: %(message)s", level=logging.DEBUG)
 
     for name in args.module:
         module = import_module(name, "prototype")
@@ -45,6 +46,7 @@ def main():
 
 
 revision = "0-python"
+log = logging.getLogger("api")
 
 
 class RootServicer(api_grpc.RootServicer):
@@ -71,9 +73,6 @@ def add_instance(inst):
 def instance_id(id):
     n, = unpack("Q", id)
     return n
-
-
-log = logging.getLogger("api")
 
 
 class ServiceServicer(api_grpc.ServiceServicer):
