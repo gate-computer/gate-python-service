@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -e
+
+project=$(dirname $(dirname $(readlink -f $(which $0))))
+[ "$project" ]
+
+parent=$(dirname $project)
+[ "$parent" ]
+
+python3 -m grpc_tools.protoc -I"$parent" --python_out="$project" --grpc_python_out="$project" "$parent/gate/service/grpc/api/service.proto"
+touch "$project/gate/__init__.py"
+touch "$project/gate/service/__init__.py"
+touch "$project/gate/service/grpc/__init__.py"
+touch "$project/gate/service/grpc/api/__init__.py"
+
+export PYTHONPATH="$project"
+
+exec python3 -B -m prototype "$@"
