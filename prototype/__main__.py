@@ -11,8 +11,6 @@ from gate.service.grpc.api import service_pb2_grpc as api_grpc
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.wrappers_pb2 import BytesValue
 
-from . import peer, peerindex
-
 default_addr = "localhost:12345"
 service_instance_types = {}
 
