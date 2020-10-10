@@ -90,13 +90,15 @@ class InstanceConfig:
 
 instance_count = 0
 id_instances = {}
+id_services = {}
 
 
-def add_instance(inst):
+def add_instance(service, inst):
     global instance_count
     instance_count += 1
     n = instance_count
     id_instances[n] = inst
+    id_services[n] = service
     return pack("Q", n)
 
 
@@ -114,7 +116,7 @@ class ServiceServicer(api_grpc.ServiceServicer):
         try:
             inst = service_instance_types[req.name](config)
             inst.ready()
-            id = add_instance(inst)
+            id = add_instance(req.name, inst)
             return api.CreateInstanceResponse(id=id)
         finally:
             self.log.debug("%s > #%d", req.name, instance_id(id))
@@ -128,7 +130,7 @@ class ServiceServicer(api_grpc.ServiceServicer):
             if error is not None:
                 return api.RestoreInstanceResponse(error=error)
             inst.ready()
-            id = add_instance(inst)
+            id = add_instance(req.name, inst)
             return api.RestoreInstanceResponse(id=id)
         finally:
             self.log.debug("%s > #%d", req.name, instance_id(id))
@@ -140,30 +142,43 @@ def get_instance(id):
 
 def pop_instance(id):
     n, = unpack("Q", id)
+    del id_services[n]
     return id_instances.pop(n)
+
+
+def fmt_instance(id):
+    n = instance_id(id)
+    return "{} #{}".format(id_services[n], n)
 
 
 def fmt_packet(p):
     domain = p[6]
-    msg = "len={} domain={}".format(len(p), domain)
+    msg = ("call", "info", "flow", "data")[domain]
 
     index = p[7]
     if index:
         msg += " index={}".format(index)
 
-    if domain == 2:
-        if len(p) == 16:
-            stream, increment = unpack("<ii", p[8:])
-            msg += " stream={} increment={}".format(stream, increment)
-        else:
-            msg += " ..."
-
-    if domain == 3:
+    if domain in (0, 1):
+        msg += " content={}".format(len(p) - 8)
+    elif domain == 2:
+        p = p[8:]
+        while len(p) >= 8:
+            stream, increment = unpack("<ii", p[:8])
+            msg += " id={} n={}".format(stream, increment)
+            p = p[8:]
+            if len(p) >= 8:
+                msg += ","
+        if len(p):
+            msg += ", trailing %r" % p
+    elif domain == 3:
         stream, note = unpack("<ii", p[8:16])
-        msg += " stream={}".format(stream)
+        msg += " id={}".format(stream)
 
         if note:
             msg += " note={}".format(note)
+
+        msg += " data={}".format(len(p) - 16)
 
     return msg
 
@@ -172,46 +187,46 @@ class InstanceServicer(api_grpc.InstanceServicer):
     log = logging.getLogger(__package__ + ".Instance")
 
     def Receive(self, req, ctx):
-        self.log.debug("#%d <", instance_id(req.id))
+        self.log.debug("%s <", fmt_instance(req.id))
         try:
             for p in get_instance(req.id).generate_packets():
-                self.log.debug("#%d %s", instance_id(req.id), fmt_packet(p))
+                self.log.debug("%s %s", fmt_instance(req.id), fmt_packet(p))
                 yield BytesValue(value=bytes(p) if isinstance(p, bytearray) else p)
         finally:
-            self.log.debug("#%d >", instance_id(req.id))
+            self.log.debug("%s >", fmt_instance(req.id))
 
     def Handle(self, req, ctx):
-        self.log.debug("#%d < %s", instance_id(req.id), fmt_packet(req.data))
+        self.log.debug("%s < %s", fmt_instance(req.id), fmt_packet(req.data))
         try:
             get_instance(req.id).handle_packet(req.data)
             return Empty()
         finally:
-            self.log.debug("#%d >", instance_id(req.id))
+            self.log.debug("%s >", fmt_instance(req.id))
 
     def Shutdown(self, req, ctx):
-        self.log.debug("#%d <", instance_id(req.id))
+        self.log.debug("%s <", fmt_instance(req.id))
         try:
             pop_instance(req.id).shutdown()
             return Empty()
         finally:
-            self.log.debug("#%d >", instance_id(req.id))
+            self.log.debug("%s >", fmt_instance(req.id))
 
     def Suspend(self, req, ctx):
-        self.log.debug("#%d <", instance_id(req.id))
+        self.log.debug("%s <", fmt_instance(req.id))
         try:
             get_instance(req.id).suspend()
             return Empty()
         finally:
-            self.log.debug("#%d >", instance_id(req.id))
+            self.log.debug("%s >", fmt_instance(req.id))
 
     def Snapshot(self, req, ctx):
-        self.log.debug("#%d <", instance_id(req.id))
+        self.log.debug("%s <", fmt_instance(req.id))
         try:
             inst = pop_instance(req.id)
             snapshot = inst.snapshot(req.outgoing, req.incoming)
             return BytesValue(value=snapshot)
         finally:
-            self.log.debug("#%d >", instance_id(req.id))
+            self.log.debug("%s >", fmt_instance(req.id))
 
 
 if __name__ == "__main__":
