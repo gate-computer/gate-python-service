@@ -58,6 +58,36 @@ class RootServicer(api_grpc.RootServicer):
         return api.InitResponse(services=services)
 
 
+class InstanceConfig:
+
+    def __init__(self, api):
+        self.max_send_size = api.max_send_size
+
+        self.proc = None
+        if api.process_key:
+            self.proc = urlsafe_b64encode(api.process_key).decode().rstrip("=")
+
+        self.pri = api.principal_id
+
+        self.uuid = None
+        if api.instance_uuid:
+            self.uuid = str(UUID(bytes=api.instance_uuid))
+
+    def __str__(self):
+        props = []
+
+        if self.proc:
+            props.append("proc={}".format(self.proc))
+
+        if self.pri:
+            props.append("pri={}".format(self.pri))
+
+        if self.uuid:
+            props.append("uuid={}".format(self.uuid))
+
+        return " ".join(props)
+
+
 instance_count = 0
 id_instances = {}
 
@@ -75,29 +105,14 @@ def instance_id(id):
     return n
 
 
-def fmt_instance_config(config):
-    props = []
-
-    if config.process_key:
-        key = urlsafe_b64encode(config.process_key).decode().rstrip("=")
-        props.append("process={}".format(key))
-
-    if config.principal_id:
-        props.append("principal={}".format(config.principal_id))
-
-    if config.instance_uuid:
-        props.append("instance={}".format(UUID(bytes=config.instance_uuid)))
-
-    return " ".join(props)
-
-
 class ServiceServicer(api_grpc.ServiceServicer):
     log = logging.getLogger(__package__ + ".Service")
 
     def CreateInstance(self, req, ctx):
-        self.log.debug("%s < %s", req.name, fmt_instance_config(req.config))
+        config = InstanceConfig(req.config)
+        self.log.debug("%s < %s", req.name, config)
         try:
-            inst = service_instance_types[req.name](req.config)
+            inst = service_instance_types[req.name](config)
             inst.ready()
             id = add_instance(inst)
             return api.CreateInstanceResponse(id=id)
@@ -105,9 +120,10 @@ class ServiceServicer(api_grpc.ServiceServicer):
             self.log.debug("%s > #%d", req.name, instance_id(id))
 
     def RestoreInstance(self, req, ctx):
-        self.log.debug("%s < %s", req.name, fmt_instance_config(req.config))
+        config = InstanceConfig(req.config)
+        self.log.debug("%s < %s", req.name, config)
         try:
-            inst = service_instance_types[req.name](req.config)
+            inst = service_instance_types[req.name](config)
             error = inst.restore(req.snapshot)
             if error is not None:
                 return api.RestoreInstanceResponse(error=error)
