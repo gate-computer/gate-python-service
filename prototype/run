@@ -1,9 +1,0 @@
-#!/bin/sh
-
-set -e
-
-project=$(dirname $(dirname $(readlink -f $(which $0))))
-[ "$project" ]
-export PYTHONPATH="$project"
-
-exec ${PYTHON:-python3} -B -m prototype "$@"
