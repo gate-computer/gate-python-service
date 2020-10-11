@@ -48,65 +48,6 @@ def add_RootServicer_to_server(servicer, server):
   server.add_generic_rpc_handlers((generic_handler,))
 
 
-class ServiceStub(object):
-  # missing associated documentation comment in .proto file
-  pass
-
-  def __init__(self, channel):
-    """Constructor.
-
-    Args:
-      channel: A grpc.Channel.
-    """
-    self.CreateInstance = channel.unary_unary(
-        '/gate.service.grpc.api.Service/CreateInstance',
-        request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateInstanceRequest.SerializeToString,
-        response_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateInstanceResponse.FromString,
-        )
-    self.RestoreInstance = channel.unary_unary(
-        '/gate.service.grpc.api.Service/RestoreInstance',
-        request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.RestoreInstanceRequest.SerializeToString,
-        response_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.RestoreInstanceResponse.FromString,
-        )
-
-
-class ServiceServicer(object):
-  # missing associated documentation comment in .proto file
-  pass
-
-  def CreateInstance(self, request, context):
-    # missing associated documentation comment in .proto file
-    pass
-    context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-    context.set_details('Method not implemented!')
-    raise NotImplementedError('Method not implemented!')
-
-  def RestoreInstance(self, request, context):
-    # missing associated documentation comment in .proto file
-    pass
-    context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-    context.set_details('Method not implemented!')
-    raise NotImplementedError('Method not implemented!')
-
-
-def add_ServiceServicer_to_server(servicer, server):
-  rpc_method_handlers = {
-      'CreateInstance': grpc.unary_unary_rpc_method_handler(
-          servicer.CreateInstance,
-          request_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateInstanceRequest.FromString,
-          response_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateInstanceResponse.SerializeToString,
-      ),
-      'RestoreInstance': grpc.unary_unary_rpc_method_handler(
-          servicer.RestoreInstance,
-          request_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.RestoreInstanceRequest.FromString,
-          response_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.RestoreInstanceResponse.SerializeToString,
-      ),
-  }
-  generic_handler = grpc.method_handlers_generic_handler(
-      'gate.service.grpc.api.Service', rpc_method_handlers)
-  server.add_generic_rpc_handlers((generic_handler,))
-
-
 class InstanceStub(object):
   # missing associated documentation comment in .proto file
   pass
@@ -117,6 +58,11 @@ class InstanceStub(object):
     Args:
       channel: A grpc.Channel.
     """
+    self.Create = channel.unary_unary(
+        '/gate.service.grpc.api.Instance/Create',
+        request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateRequest.SerializeToString,
+        response_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateResponse.FromString,
+        )
     self.Receive = channel.unary_stream(
         '/gate.service.grpc.api.Instance/Receive',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.ReceiveRequest.SerializeToString,
@@ -147,6 +93,13 @@ class InstanceStub(object):
 class InstanceServicer(object):
   # missing associated documentation comment in .proto file
   pass
+
+  def Create(self, request, context):
+    # missing associated documentation comment in .proto file
+    pass
+    context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+    context.set_details('Method not implemented!')
+    raise NotImplementedError('Method not implemented!')
 
   def Receive(self, request, context):
     # missing associated documentation comment in .proto file
@@ -186,6 +139,11 @@ class InstanceServicer(object):
 
 def add_InstanceServicer_to_server(servicer, server):
   rpc_method_handlers = {
+      'Create': grpc.unary_unary_rpc_method_handler(
+          servicer.Create,
+          request_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateRequest.FromString,
+          response_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateResponse.SerializeToString,
+      ),
       'Receive': grpc.unary_stream_rpc_method_handler(
           servicer.Receive,
           request_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.ReceiveRequest.FromString,

@@ -33,7 +33,6 @@ def main():
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     api_grpc.add_RootServicer_to_server(RootServicer(), server)
-    api_grpc.add_ServiceServicer_to_server(ServiceServicer(), server)
     api_grpc.add_InstanceServicer_to_server(InstanceServicer(), server)
     server.add_insecure_port(args.l)
     server.start()
@@ -54,7 +53,7 @@ class RootServicer(api_grpc.RootServicer):
     def Init(self, req, ctx):
         names = sorted(service_instance_types.keys())
         self.log.debug("%s", " ".join(names))
-        services = [api.ServiceInfo(name=n, revision=revision) for n in names]
+        services = [api.Service(name=n, revision=revision) for n in names]
         return api.InitResponse(services=services)
 
 
@@ -107,35 +106,6 @@ def instance_id(id):
     return n
 
 
-class ServiceServicer(api_grpc.ServiceServicer):
-    log = logging.getLogger(__package__ + ".Service")
-
-    def CreateInstance(self, req, ctx):
-        config = InstanceConfig(req.config)
-        self.log.debug("%s < %s", req.name, config)
-        try:
-            inst = service_instance_types[req.name](config)
-            inst.ready()
-            id = add_instance(req.name, inst)
-            return api.CreateInstanceResponse(id=id)
-        finally:
-            self.log.debug("%s > #%d", req.name, instance_id(id))
-
-    def RestoreInstance(self, req, ctx):
-        config = InstanceConfig(req.config)
-        self.log.debug("%s < %s", req.name, config)
-        try:
-            inst = service_instance_types[req.name](config)
-            error = inst.restore(req.snapshot)
-            if error is not None:
-                return api.RestoreInstanceResponse(error=error)
-            inst.ready()
-            id = add_instance(req.name, inst)
-            return api.RestoreInstanceResponse(id=id)
-        finally:
-            self.log.debug("%s > #%d", req.name, instance_id(id))
-
-
 def get_instance(id):
     return id_instances[instance_id(id)]
 
@@ -186,8 +156,30 @@ def fmt_packet(p):
 class InstanceServicer(api_grpc.InstanceServicer):
     log = logging.getLogger(__package__ + ".Instance")
 
+    def Create(self, req, ctx):
+        config = InstanceConfig(req.config)
+        if req.snapshot:
+            self.log.debug("%s < %s snapshot=%d",
+                           req.service_name, config, len(req.snapshot))
+        else:
+            self.log.debug("%s < %s", req.service_name, config)
+
+        try:
+            inst = service_instance_types[req.service_name](config)
+            if req.snapshot:
+                error = inst.restore(req.snapshot)
+                if error is not None:
+                    return api.CreateResponse(restoration_error=error)
+
+            inst.ready()
+            id = add_instance(req.service_name, inst)
+            return api.CreateResponse(id=id)
+        finally:
+            self.log.debug("%s > #%d", req.service_name, instance_id(id))
+
     def Receive(self, req, ctx):
         self.log.debug("%s <", fmt_instance(req.id))
+
         try:
             for p in get_instance(req.id).generate_packets():
                 self.log.debug("%s %s", fmt_instance(req.id), fmt_packet(p))
@@ -197,6 +189,7 @@ class InstanceServicer(api_grpc.InstanceServicer):
 
     def Handle(self, req, ctx):
         self.log.debug("%s < %s", fmt_instance(req.id), fmt_packet(req.data))
+
         try:
             get_instance(req.id).handle_packet(req.data)
             return Empty()
@@ -204,29 +197,35 @@ class InstanceServicer(api_grpc.InstanceServicer):
             self.log.debug("%s >", fmt_instance(req.id))
 
     def Shutdown(self, req, ctx):
-        self.log.debug("%s <", fmt_instance(req.id))
+        desc = fmt_instance(req.id)
+        self.log.debug("%s <", desc)
+
         try:
             pop_instance(req.id).shutdown()
             return Empty()
         finally:
-            self.log.debug("%s >", fmt_instance(req.id))
+            self.log.debug("%s >", desc)
 
     def Suspend(self, req, ctx):
-        self.log.debug("%s <", fmt_instance(req.id))
+        desc = fmt_instance(req.id)
+        self.log.debug("%s <", desc)
+
         try:
             get_instance(req.id).suspend()
             return Empty()
         finally:
-            self.log.debug("%s >", fmt_instance(req.id))
+            self.log.debug("%s >", desc)
 
     def Snapshot(self, req, ctx):
-        self.log.debug("%s <", fmt_instance(req.id))
+        desc = fmt_instance(req.id)
+        self.log.debug("%s <", desc)
+
         try:
             inst = pop_instance(req.id)
             snapshot = inst.snapshot(req.outgoing, req.incoming)
             return BytesValue(value=snapshot)
         finally:
-            self.log.debug("%s >", fmt_instance(req.id))
+            self.log.debug("%s >", desc)
 
 
 if __name__ == "__main__":
