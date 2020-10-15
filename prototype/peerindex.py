@@ -1,7 +1,5 @@
 import logging
-from base64 import urlsafe_b64encode
 from struct import pack, unpack
-from uuid import UUID
 
 from gevent.queue import Queue
 
@@ -26,7 +24,7 @@ class Group:
     def deregister(self, name):
         del self.name_procs[name]
 
-    def peer_proc(self, peer_name):
+    def peer_proc(self, my_proc, peer_name):
         return self.name_procs.get(peer_name)
 
     def peer_names(self, my_name):
@@ -106,6 +104,8 @@ class Instance:
         self.group.register(self.proc, self.name)
 
     def stop(self):
+        if self.group:
+            self.group.deregister(self.name)
         self.queue.put(StopIteration)
 
     def shutdown(self):

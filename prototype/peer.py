@@ -7,11 +7,12 @@ from gevent.queue import Queue
 
 log = logging.getLogger(__name__)
 
-ERROR_GROUP_NOT_FOUND = 1
-ERROR_PEER_NOT_FOUND = 2
-ERROR_SINGULARITY = 3
-ERROR_ALREADY_CONNECTING = 4
-ERROR_ALREADY_CONNECTED = 5
+ERROR_ABI_VIOLATION = 1
+ERROR_GROUP_NOT_FOUND = 2
+ERROR_PEER_NOT_FOUND = 3
+ERROR_SINGULARITY = 4
+ERROR_ALREADY_CONNECTING = 5
+ERROR_ALREADY_CONNECTED = 6
 
 proc_instances = {}
 procpair_conns = {}
@@ -31,6 +32,40 @@ def register_peer_group_instance(proc, g, name):
     return True
 
 
+def parse_call(buf):
+    if len(buf) >= 4:
+        zero, = unpack("<I", buf[:4])
+        if zero != 0:
+            return None
+
+        buf = buf[4:]
+        if len(buf) >= 4:
+            buf = buf[4:]
+            group_name, buf = parse_name(buf)
+            peer_name, buf = parse_name(buf)
+            type_name, buf = parse_name(buf)
+            return group_name, peer_name, type_name
+
+    raise ValueError()
+
+
+def parse_name(buf):
+    if len(buf) >= 1:
+        size = buf[0]
+        buf = buf[1:]
+        if len(buf) >= size:
+            name = buf[:size].decode()
+            buf = buf[size:]
+            return name, buf
+
+    raise ValueError()
+
+
+def encode_name(name):
+    data = name.encode()
+    return pack("<B", len(data)) + data
+
+
 class Conn:
     log = logging.getLogger(__name__ + ".Conn")
 
@@ -44,25 +79,25 @@ class Conn:
     def already_connecting(self, peer_name):
         return peer_name in self.callbacks
 
-    def connect(self, peer_name, my_func):
+    def connect(self, peer_name, peer_type, my_func):
         other = None
         if self.callbacks:
             other, = self.callbacks.items()
 
         assert peer_name not in self.callbacks
-        self.callbacks[peer_name] = my_func
+        self.callbacks[peer_name] = (peer_type, my_func)
 
         if other:
-            my_name, peer_func = other
-            my_func(False, peer_name=peer_name)
-            peer_func(False, peer_name=my_name)
+            my_name, (my_type, peer_func) = other
+            my_func(False, peer_name=peer_name, type_name=my_type)
+            peer_func(False, peer_name=my_name, type_name=peer_type)
 
     def transfer(self, my_name, data, note):
         if len(data) == 0:
             self.closing[my_name] |= 0b0001
             self.closing[self.peer_name(my_name)] |= 0b0100
 
-        peer_func = self.callbacks[my_name]
+        _, peer_func = self.callbacks[my_name]
         peer_func(self.closed(self.peer_name(my_name)), data=data, note=note)
 
     def flow(self, my_name, increment):
@@ -70,14 +105,14 @@ class Conn:
             self.closing[my_name] |= 0b0010
             self.closing[self.peer_name(my_name)] |= 0b1000
 
-        peer_func = self.callbacks[my_name]
+        _, peer_func = self.callbacks[my_name]
         peer_func(self.closed(self.peer_name(my_name)), increment=increment)
 
     def closed(self, my_name):
         return self.closing.get(my_name, 0) == 0b1111
 
     def peer_name(self, my_name):
-        for k, v in self.callbacks.items():
+        for k in self.callbacks:
             if k != my_name:
                 return k
 
@@ -126,34 +161,45 @@ class Instance:
             self.handle_data(packet)
 
     def handle_call(self, packet):
-        error = ERROR_GROUP_NOT_FOUND
-        group_name, peer_name = packet[8:].decode().split(":", 1)
-        if self.group and self.group.name == group_name:
-            error = ERROR_SINGULARITY
-            if self.name != peer_name:
-                error = ERROR_PEER_NOT_FOUND
-                peer_proc = self.group.peer_proc(peer_name)
-                if peer_proc:
-                    assert peer_proc != self.proc
-                    pair = procpair(self.proc, peer_proc)
-                    try:
-                        conn = procpair_conns[pair]
-                    except KeyError:
-                        peer = proc_instances[peer_proc]
-                        peer.handle_conn(group_name, -1, False,
-                                         peer_name=self.name)
-                        conn = procpair_conns[pair] = Conn()
+        error = ERROR_ABI_VIOLATION
+        try:
+            names = parse_call(packet[8:])
+        except ValueError:
+            pass
+        else:
+            if not names:
+                self.log.debug("%s: unsupported", self)
+                self.queue.put(bytearray(8))
+                return
 
-                    error = ERROR_ALREADY_CONNECTED
-                    if not conn.already_connected():
-                        error = ERROR_ALREADY_CONNECTING
-                        if not conn.already_connecting(peer_name):
-                            stream = self.stream_count
-                            self.stream_count += 1
-                            self.stream_conns[stream] = conn
-                            conn.connect(peer_name, partial(
-                                self.handle_conn, group_name, stream))
-                            error = 0
+            group_name, peer_name, type_name = names
+            error = ERROR_GROUP_NOT_FOUND
+            if self.group and self.group.name == group_name:
+                error = ERROR_SINGULARITY
+                if self.name != peer_name:
+                    error = ERROR_PEER_NOT_FOUND
+                    peer_proc = self.group.peer_proc(self.proc, peer_name)
+                    if peer_proc:
+                        assert peer_proc != self.proc
+                        pair = procpair(self.proc, peer_proc)
+                        try:
+                            conn = procpair_conns[pair]
+                        except KeyError:
+                            peer = proc_instances[peer_proc]
+                            peer.handle_conn(group_name, -1, False,
+                                             peer_name=self.name, type_name=type_name)
+                            conn = procpair_conns[pair] = Conn()
+
+                        error = ERROR_ALREADY_CONNECTED
+                        if not conn.already_connected():
+                            error = ERROR_ALREADY_CONNECTING
+                            if not conn.already_connecting(peer_name):
+                                stream = self.stream_count
+                                self.stream_count += 1
+                                self.stream_conns[stream] = conn
+                                conn.connect(peer_name, type_name,
+                                             partial(self.handle_conn, group_name, stream))
+                                error = 0
 
         self.log.debug("%s: error=%d", self, error)
 
@@ -181,14 +227,14 @@ class Instance:
         if conn.closed(self.name):
             del self.stream_conns[stream]
 
-    def handle_conn(self, group_name, stream, closed, *, peer_name=None, data=None, note=None, increment=None):
+    def handle_conn(self, group_name, stream, closed, *, peer_name=None, type_name=None, data=None, note=None, increment=None):
         if peer_name is not None:
             p = bytearray(8)
             p[6] = 1  # info domain
-            p += pack("<i", stream)
-            p += group_name.encode()
-            p += ":".encode()
-            p += peer_name.encode()
+            p += pack("<iI", stream, 0)
+            p += encode_name(group_name)
+            p += encode_name(peer_name)
+            p += encode_name(type_name)
             self.queue.put(p)
 
         if data is not None:
@@ -208,8 +254,6 @@ class Instance:
             del self.stream_conns[stream]
 
     def stop(self):
-        if self.group:
-            self.group.deregister(self.name)
         del proc_instances[self.proc]
         self.queue.put(StopIteration)
 
