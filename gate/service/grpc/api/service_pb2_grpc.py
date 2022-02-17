@@ -17,7 +17,7 @@ class RootStub(object):
       channel: A grpc.Channel.
     """
     self.Init = channel.unary_unary(
-        '/gate.service.grpc.api.Root/Init',
+        '/gate.service.Root/Init',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.InitRequest.SerializeToString,
         response_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.InitResponse.FromString,
         )
@@ -44,7 +44,7 @@ def add_RootServicer_to_server(servicer, server):
       ),
   }
   generic_handler = grpc.method_handlers_generic_handler(
-      'gate.service.grpc.api.Root', rpc_method_handlers)
+      'gate.service.Root', rpc_method_handlers)
   server.add_generic_rpc_handlers((generic_handler,))
 
 
@@ -59,32 +59,32 @@ class InstanceStub(object):
       channel: A grpc.Channel.
     """
     self.Create = channel.unary_unary(
-        '/gate.service.grpc.api.Instance/Create',
+        '/gate.service.Instance/Create',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateRequest.SerializeToString,
         response_deserializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.CreateResponse.FromString,
         )
     self.Receive = channel.unary_stream(
-        '/gate.service.grpc.api.Instance/Receive',
+        '/gate.service.Instance/Receive',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.ReceiveRequest.SerializeToString,
         response_deserializer=google_dot_protobuf_dot_wrappers__pb2.BytesValue.FromString,
         )
     self.Handle = channel.unary_unary(
-        '/gate.service.grpc.api.Instance/Handle',
+        '/gate.service.Instance/Handle',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.HandleRequest.SerializeToString,
         response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
         )
     self.Shutdown = channel.unary_unary(
-        '/gate.service.grpc.api.Instance/Shutdown',
+        '/gate.service.Instance/Shutdown',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.ShutdownRequest.SerializeToString,
         response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
         )
     self.Suspend = channel.unary_unary(
-        '/gate.service.grpc.api.Instance/Suspend',
+        '/gate.service.Instance/Suspend',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.SuspendRequest.SerializeToString,
         response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
         )
     self.Snapshot = channel.unary_unary(
-        '/gate.service.grpc.api.Instance/Snapshot',
+        '/gate.service.Instance/Snapshot',
         request_serializer=gate_dot_service_dot_grpc_dot_api_dot_service__pb2.SnapshotRequest.SerializeToString,
         response_deserializer=google_dot_protobuf_dot_wrappers__pb2.BytesValue.FromString,
         )
@@ -171,5 +171,5 @@ def add_InstanceServicer_to_server(servicer, server):
       ),
   }
   generic_handler = grpc.method_handlers_generic_handler(
-      'gate.service.grpc.api.Instance', rpc_method_handlers)
+      'gate.service.Instance', rpc_method_handlers)
   server.add_generic_rpc_handlers((generic_handler,))
