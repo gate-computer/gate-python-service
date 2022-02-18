@@ -1,9 +1,8 @@
 import logging
 from collections import defaultdict
 from functools import partial
+from queue import Queue
 from struct import pack, unpack
-
-from gevent.queue import Queue
 
 log = logging.getLogger(__name__)
 
@@ -148,7 +147,10 @@ class Instance:
         self.log.debug("%s: registered in %s as %s", self, g, name)
 
     def generate_packets(self):
-        for p in self.queue:
+        while True:
+            p = self.queue.get()
+            if p is StopIteration:
+                break
             yield p
 
     def handle_packet(self, packet):

@@ -1,7 +1,6 @@
 import logging
+from queue import Queue
 from struct import pack, unpack
-
-from gevent.queue import Queue
 
 from .peer import register_peer_group_instance
 
@@ -58,7 +57,10 @@ class Instance:
         pass
 
     def generate_packets(self):
-        for p in self.queue:
+        while True:
+            p = self.queue.get()
+            if p is StopIteration:
+                break
             yield p
 
     def handle_packet(self, packet):
