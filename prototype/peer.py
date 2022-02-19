@@ -42,8 +42,7 @@ def parse_call(buf):
             buf = buf[4:]
             group_name, buf = parse_name(buf)
             peer_name, buf = parse_name(buf)
-            type_name, buf = parse_name(buf)
-            return group_name, peer_name, type_name
+            return group_name, peer_name, buf
 
     raise ValueError()
 
@@ -78,18 +77,18 @@ class Conn:
     def already_connecting(self, peer_name):
         return peer_name in self.callbacks
 
-    def connect(self, peer_name, peer_type, my_func):
+    def connect(self, peer_name, peer_handshake, my_func):
         other = None
         if self.callbacks:
             other, = self.callbacks.items()
 
         assert peer_name not in self.callbacks
-        self.callbacks[peer_name] = (peer_type, my_func)
+        self.callbacks[peer_name] = (peer_handshake, my_func)
 
         if other:
-            my_name, (my_type, peer_func) = other
-            my_func(False, peer_name=peer_name, type_name=my_type)
-            peer_func(False, peer_name=my_name, type_name=peer_type)
+            my_name, (my_handshake, peer_func) = other
+            my_func(False, peer_name=peer_name, handshake=my_handshake)
+            peer_func(False, peer_name=my_name, handshake=peer_handshake)
 
     def transfer(self, my_name, data, note):
         if len(data) == 0:
@@ -165,16 +164,16 @@ class Instance:
     def handle_call(self, packet):
         error = ERROR_ABI_VIOLATION
         try:
-            names = parse_call(packet[8:])
+            parsed = parse_call(packet[8:])
         except ValueError:
             pass
         else:
-            if not names:
+            if not parsed:
                 self.log.debug("%s: unsupported", self)
                 self.queue.put(bytearray(8))
                 return
 
-            group_name, peer_name, type_name = names
+            group_name, peer_name, handshake = parsed
             error = ERROR_GROUP_NOT_FOUND
             if self.group and self.group.name == group_name:
                 error = ERROR_SINGULARITY
@@ -188,8 +187,7 @@ class Instance:
                             conn = procpair_conns[pair]
                         except KeyError:
                             peer = proc_instances[peer_proc]
-                            peer.handle_conn(group_name, -1, False,
-                                             peer_name=self.name, type_name=type_name)
+                            peer.handle_conn(group_name, -1, False, peer_name=self.name, handshake=handshake)
                             conn = procpair_conns[pair] = Conn()
 
                         error = ERROR_ALREADY_CONNECTED
@@ -199,8 +197,7 @@ class Instance:
                                 stream = self.stream_count
                                 self.stream_count += 1
                                 self.stream_conns[stream] = conn
-                                conn.connect(peer_name, type_name,
-                                             partial(self.handle_conn, group_name, stream))
+                                conn.connect(peer_name, handshake, partial(self.handle_conn, group_name, stream))
                                 error = 0
 
         self.log.debug("%s: error=%d", self, error)
@@ -229,14 +226,14 @@ class Instance:
         if conn.closed(self.name):
             del self.stream_conns[stream]
 
-    def handle_conn(self, group_name, stream, closed, *, peer_name=None, type_name=None, data=None, note=None, increment=None):
+    def handle_conn(self, group_name, stream, closed, *, peer_name=None, handshake=None, data=None, note=None, increment=None):
         if peer_name is not None:
             p = bytearray(8)
             p[6] = 1  # info domain
             p += pack("<iI", stream, 0)
             p += encode_name(group_name)
             p += encode_name(peer_name)
-            p += encode_name(type_name)
+            p += handshake
             self.queue.put(p)
 
         if data is not None:
