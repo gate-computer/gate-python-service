@@ -8,8 +8,8 @@ from time import sleep
 from uuid import UUID
 
 import grpc
-from gate.service.grpc.api import service_pb2 as api
-from gate.service.grpc.api import service_pb2_grpc as api_grpc
+from gate_grpc.api import service_pb2 as api
+from gate_grpc.api import service_pb2_grpc as api_grpc
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.wrappers_pb2 import BytesValue
 
