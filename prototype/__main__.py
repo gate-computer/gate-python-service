@@ -7,10 +7,11 @@ from time import sleep
 import grpc
 from gate_grpc.api import service_pb2_grpc as api_grpc
 
-from . import InstanceServicer, RootServicer
+from . import InstanceServicer, RootServicer, service_instance_types
 
 default_addr = "localhost:12345"
-service_instance_types = {}
+
+log = logging.getLogger("prototype")
 
 
 def main():
