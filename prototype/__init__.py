@@ -3,8 +3,8 @@ from base64 import urlsafe_b64encode
 from struct import pack, unpack
 from uuid import UUID
 
-from gate_grpc.api import service_pb2 as api
-from gate_grpc.api import service_pb2_grpc as api_grpc
+from gate.grpc.pb import service_pb2 as api
+from gate.grpc.pb import service_pb2_grpc as api_grpc
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.wrappers_pb2 import BytesValue
 

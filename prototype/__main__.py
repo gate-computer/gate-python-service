@@ -5,7 +5,7 @@ from importlib import import_module
 from time import sleep
 
 import grpc
-from gate_grpc.api import service_pb2_grpc as api_grpc
+from gate.grpc.pb import service_pb2_grpc as api_grpc
 
 from . import InstanceServicer, RootServicer, service_instance_types
 
