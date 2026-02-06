@@ -33,7 +33,7 @@ def register_peer_group_instance(proc, g, name):
 
 def parse_call(buf):
     if len(buf) >= 4:
-        zero, = unpack("<I", buf[:4])
+        (zero,) = unpack("<I", buf[:4])
         if zero != 0:
             return None
 
@@ -80,7 +80,7 @@ class Conn:
     def connect(self, peer_name, peer_handshake, my_func):
         other = None
         if self.callbacks:
-            other, = self.callbacks.items()
+            (other,) = self.callbacks.items()
 
         assert peer_name not in self.callbacks
         self.callbacks[peer_name] = (peer_handshake, my_func)

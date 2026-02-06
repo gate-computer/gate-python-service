@@ -1,6 +1,6 @@
 import logging
 from queue import Queue
-from struct import pack, unpack
+from struct import pack
 
 from .peer import register_peer_group_instance
 

@@ -16,13 +16,11 @@ log = logging.getLogger("prototype")
 
 def main():
     parser = argparse.ArgumentParser(__package__)
-    parser.add_argument("-l", metavar="ADDR", default=default_addr,
-                        help="bind address (default: {})".format(default_addr))
+    parser.add_argument("-l", metavar="ADDR", default=default_addr, help="bind address (default: {})".format(default_addr))
     parser.add_argument("module", nargs="+", help="service to import")
     args = parser.parse_args()
 
-    logging.basicConfig(format="%(asctime)s %(name)s.%(funcName)s: %(message)s",
-                        level=logging.DEBUG)
+    logging.basicConfig(format="%(asctime)s %(name)s.%(funcName)s: %(message)s", level=logging.DEBUG)
 
     for name in args.module:
         module = import_module(name, __package__)

@@ -23,7 +23,6 @@ class RootServicer(api_grpc.RootServicer):
 
 
 class InstanceConfig:
-
     def __init__(self, api):
         self.max_send_size = api.max_send_size
 
@@ -67,7 +66,7 @@ def add_instance(service, inst):
 
 
 def instance_id(id):
-    n, = unpack("Q", id)
+    (n,) = unpack("Q", id)
     return n
 
 
@@ -76,7 +75,7 @@ def get_instance(id):
 
 
 def pop_instance(id):
-    n, = unpack("Q", id)
+    (n,) = unpack("Q", id)
     del id_services[n]
     return id_instances.pop(n)
 
@@ -124,8 +123,7 @@ class InstanceServicer(api_grpc.InstanceServicer):
     def Create(self, req, ctx):
         config = InstanceConfig(req.config)
         if req.snapshot:
-            self.log.debug("%s < %s snapshot=%d",
-                           req.service_name, config, len(req.snapshot))
+            self.log.debug("%s < %s snapshot=%d", req.service_name, config, len(req.snapshot))
         else:
             self.log.debug("%s < %s", req.service_name, config)
 
